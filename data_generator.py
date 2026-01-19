@@ -2,7 +2,7 @@ import time
 import random
 import psycopg2
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -82,7 +82,7 @@ def create_match(cur):
     map_name, mode = random.choice(list(MAPS_MODES.items()))
     cur.execute(
         "INSERT INTO matches (started_at, map, mode) VALUES (%s, %s, %s) RETURNING id;",
-        (datetime.utcnow(), map_name, mode)
+        (datetime.now(timezone.utc), map_name, mode)
     )
     return cur.fetchone()[0]
 

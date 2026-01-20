@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-RUN pip install --no-cache-dir psycopg2-binary python-dotenv
+RUN pip install --no-cache-dir psycopg2-binary python-dotenv faker numpy
 
 WORKDIR /app
 COPY data_generator.py ./

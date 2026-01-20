@@ -36,5 +36,39 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  redash:
+    image: redash/redash:latest
+    container_name: redash
+    restart: unless-stopped
+    environment:
+      REDASH_DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@postgres/${DB_NAME}"
+      REDASH_REDIS_URL: "redis://redis:6379/0"
+      REDASH_COOKIE_SECRET: "${REDASH_COOKIE_SECRET}"
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+      - redis
+  
+  redash_worker:
+    image: redash/redash:latest
+    container_name: redash_worker
+    depends_on:
+      - postgres
+    environment:
+      REDASH_DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}"
+      REDASH_REDIS_URL: "redis://redis:6379/0"
+      REDASH_COOKIE_SECRET: "${REDASH_COOKIE_SECRET}"
+      QUEUES: "queries,celery"
+    restart: unless-stopped
+    command: worker
+
 volumes:
   pg_data:

@@ -1,4 +1,4 @@
-CREATE TYPE game_result AS ENUM ('win', 'loss');
+CREATE TYPE game_result AS ENUM ('victory', 'defeat', 'draw');
 
 CREATE TYPE player_rank AS ENUM (
     'bronze',
@@ -16,38 +16,66 @@ CREATE TYPE player_role AS ENUM ('damage', 'support', 'tank');
 CREATE TABLE players (
     id BIGSERIAL PRIMARY KEY,
     nickname TEXT NOT NULL UNIQUE,
+    email TEXT UNIQUE,
+    phone TEXT UNIQUE,
+    rank player_rank NOT NULL,
     created_at TIMESTAMP DEFAULT now()
 );
 
 CREATE TABLE matches (
     id BIGSERIAL PRIMARY KEY,
     started_at TIMESTAMP NOT NULL,
+    ended_at TIMESTAMP,
     map TEXT,
     mode TEXT
 );
 
 CREATE TABLE heroes (
     id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE
+    name TEXT NOT NULL UNIQUE,
+    role player_role NOT NULL
 );
 
-INSERT INTO heroes (name) VALUES
+INSERT INTO heroes (name, role) VALUES
 -- Tanks
-('D.Va'), ('Doomfist'), ('Junker Queen'), ('Mauga'),
-('Orisa'), ('Ramattra'), ('Reinhardt'), ('Roadhog'),
-('Sigma'), ('Winston'), ('Wrecking Ball'), ('Zarya'),
+('D.Va', 'tank'), ('Doomfist', 'tank'), ('Junker Queen', 'tank'), ('Mauga', 'tank'),
+('Orisa', 'tank'), ('Ramattra', 'tank'), ('Reinhardt', 'tank'), ('Roadhog', 'tank'),
+('Sigma', 'tank'), ('Winston', 'tank'), ('Wrecking Ball', 'tank'), ('Zarya', 'tank'),
 
 -- Damage
-('Ashe'), ('Bastion'), ('Cassidy'), ('Echo'),
-('Genji'), ('Hanzo'), ('Junkrat'), ('Mei'),
-('Pharah'), ('Reaper'), ('Sojourn'), ('Soldier: 76'),
-('Sombra'), ('Symmetra'), ('Torbjörn'),
-('Tracer'), ('Widowmaker'),
+('Ashe', 'damage'), ('Bastion', 'damage'), ('Cassidy', 'damage'), ('Echo', 'damage'),
+('Genji', 'damage'), ('Hanzo', 'damage'), ('Junkrat', 'damage'), ('Mei', 'damage'),
+('Pharah', 'damage'), ('Reaper', 'damage'), ('Sojourn', 'damage'), ('Soldier: 76', 'damage'),
+('Sombra', 'damage'), ('Symmetra', 'damage'), ('Torbjörn', 'damage'),
+('Tracer', 'damage'), ('Widowmaker', 'damage'),
 
 -- Support
-('Ana'), ('Baptiste'), ('Brigitte'), ('Illari'),
-('Kiriko'), ('Lifeweaver'), ('Lúcio'),
-('Mercy'), ('Moira'), ('Zenyatta');
+('Ana', 'support'), ('Baptiste', 'support'), ('Brigitte', 'support'), ('Illari', 'support'),
+('Kiriko', 'support'), ('Lifeweaver', 'support'), ('Lúcio', 'support'),
+('Mercy', 'support'), ('Moira', 'support'), ('Zenyatta', 'support');
+
+CREATE TABLE maps (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    mode TEXT NOT NULL
+);
+
+INSERT INTO maps (name, mode) VALUES
+('Ilios', 'Control'),
+('Lijiang Tower', 'Control'),
+('Nepal', 'Control'),
+('Busan', 'Control'),
+('Havana', 'Escort'),
+('Dorado', 'Escort'),
+('Route 66', 'Escort'),
+('Watchpoint: Gibraltar', 'Escort'),
+('King''s Row', 'Hybrid'),
+('Numbani', 'Hybrid'),
+('Eichenwalde', 'Hybrid'),
+('Blizzard World', 'Hybrid'),
+('Colosseo', 'Push'),
+('New Queen Street', 'Push'),
+('Esperança', 'Push');
 
 CREATE TABLE match_players (
     id BIGSERIAL PRIMARY KEY,

@@ -16,6 +16,24 @@ RANK_STD = 1.5
 
 NUM_PLAYERS = 10000
 
+RANK_MULTIPLIER = {
+    "bronze": 0.9,
+    "silver": 0.95,
+    "gold": 1.0,
+    "platinum": 1.05,
+    "diamond": 1.1,
+    "master": 1.15,
+    "grandmaster": 1.2,
+    "champion": 1.25
+}
+
+HERO_POWER = {
+    1: 1.06, 2: 0.90, 3: 0.92, 4: 0.94, 5: 0.96, 6: 0.98, 7: 1.00, 8: 1.02, 9: 1.04, 10: 1.06,
+    11: 0.90, 12: 0.92, 13: 0.94, 14: 0.96, 15: 0.98, 16: 1.00, 17: 1.02, 18: 1.04, 19: 1.06, 20: 1.08,
+    21: 0.92, 22: 0.94, 23: 0.96, 24: 0.98, 25: 1.00, 26: 1.02, 27: 1.04, 28: 1.06, 29: 1.08, 30: 1.10,
+    31: 0.94, 32: 0.96, 33: 0.98, 34: 1.00, 35: 1.02, 36: 1.04, 37: 1.06, 38: 1.08, 39: 1.12    
+}
+
 conn = psycopg2.connect(
     host="postgres",
     port=os.getenv("DB_PORT"),
@@ -48,20 +66,31 @@ def generate_players():
     conn.commit()
 
 
-def get_random_players_for_roles():
+def get_random_players_for_roles(all_used_ids):
     players = []
-    used_ids = set()
     for role in ROLE_COMPOSITION:
         cur.execute(
             "SELECT id, rank FROM players WHERE id NOT IN %s ORDER BY random() LIMIT 1;",
-            (tuple(used_ids) if used_ids else (0,),)
+            (tuple(all_used_ids) if all_used_ids else (0,),)
         )
         row = cur.fetchone()
         if row:
             pid, rank = row
-            used_ids.add(pid)
+            all_used_ids.add(pid)
             players.append((pid, role, rank))
     return players
+
+
+def get_random_hero_for_team(role, used_hero_ids):
+    cur.execute(
+        "SELECT id FROM heroes WHERE role = %s AND id NOT IN %s ORDER BY random() LIMIT 1;",
+        (role, tuple(used_hero_ids) if used_hero_ids else (0,))
+    )
+    row = cur.fetchone()
+    if row:
+        used_hero_ids.add(row[0])
+        return row[0]
+    return None
 
 
 def get_random_map():
@@ -93,13 +122,24 @@ def generate_match_stats(role):
         accuracy = float(np.clip(np.random.normal(50, 10), 0, 100))
     return kills, assists, deaths, damage, healing, accuracy
 
-def get_random_hero(role):
-    cur.execute(
-        "SELECT id FROM heroes WHERE role = %s ORDER BY random() LIMIT 1;",
-        (role,)
-    )
-    row = cur.fetchone()
-    return row[0] if row else None
+
+def calculate_team_power_with_rank(team, heroes_by_role):
+    power = 0
+    hero_index = {role: 0 for role in heroes_by_role}
+    for pid, role, rank in team:
+        hero_id = heroes_by_role[role][hero_index[role]]
+        hero_index[role] += 1
+
+        hero_power_value = HERO_POWER.get(hero_id, 1.0)
+        rank_mult = RANK_MULTIPLIER.get(rank, 1.0)
+
+        power += hero_power_value * 100 + rank_mult * 10
+    return power
+
+
+def choose_winner(team1_power, team2_power):
+    diff = team1_power - team2_power
+    return random.random() < (1 / (1 + np.exp(-diff / 50)))
 
 
 def generate_match():
@@ -112,45 +152,47 @@ def generate_match():
     )
     match_id = cur.fetchone()[0]
 
-    team1 = get_random_players_for_roles()
-    team2 = get_random_players_for_roles()
+    # уникальные игроки в матче
+    used_player_ids = set()
+    team1 = get_random_players_for_roles(used_player_ids)
+    team2 = get_random_players_for_roles(used_player_ids)
 
-    if random.random() < 0.01:
-        results = ['draw'] * 10
-        for team in [team1, team2]:
-            for pid, role, rank in team:
-                kills, assists, deaths, damage, healing, accuracy = generate_match_stats(role)
-                hero_id = get_random_hero(role)
-                cur.execute(
-                    """INSERT INTO match_players 
-                    (match_id, player_id, result, rank, role, hero_id, kills, assists, deaths, damage, healing, accuracy)
-                    VALUES (%s,%s,'draw',%s,%s,%s,%s,%s,%s,%s,%s,%s);""",
-                    (match_id, pid, rank, role, hero_id, kills, assists, deaths, damage, healing, accuracy)
-                )
+    # уникальные герои в командах
+    heroes_by_role_team1 = {role: [] for role in ROLE_COMPOSITION}
+    heroes_by_role_team2 = {role: [] for role in ROLE_COMPOSITION}
+
+    for role in ROLE_COMPOSITION:
+        heroes_by_role_team1[role].append(get_random_hero_for_team(role, set()))
+        heroes_by_role_team2[role].append(get_random_hero_for_team(role, set()))
+
+    # рассчёт силы команд
+    team1_power = calculate_team_power_with_rank(team1, heroes_by_role_team1)
+    team2_power = calculate_team_power_with_rank(team2, heroes_by_role_team2)
+
+    # определяем победителя
+    if choose_winner(team1_power, team2_power):
+        winner_team, loser_team = team1, team2
+        winner_heroes, loser_heroes = heroes_by_role_team1, heroes_by_role_team2
+        result_winner, result_loser = 'victory', 'defeat'
     else:
-        winner_team = random.choice([team1, team2])
-        loser_team = team1 if winner_team is team2 else team2
+        winner_team, loser_team = team2, team1
+        winner_heroes, loser_heroes = heroes_by_role_team2, heroes_by_role_team1
+        result_winner, result_loser = 'victory', 'defeat'
 
-        for pid, role, rank in winner_team:
+    # вставка данных
+    for team, heroes_by_role, result in [(winner_team, winner_heroes, result_winner),
+                                         (loser_team, loser_heroes, result_loser)]:
+        hero_index = {role: 0 for role in heroes_by_role}
+        for pid, role, rank in team:
+            hero_id = heroes_by_role[role][hero_index[role]]
+            hero_index[role] += 1
             kills, assists, deaths, damage, healing, accuracy = generate_match_stats(role)
-            hero_id = get_random_hero(role)
             cur.execute(
                 """INSERT INTO match_players 
                 (match_id, player_id, result, rank, role, hero_id, kills, assists, deaths, damage, healing, accuracy)
-                VALUES (%s,%s,'victory',%s,%s,%s,%s,%s,%s,%s,%s,%s);""",
-                (match_id, pid, rank, role, hero_id, kills, assists, deaths, damage, healing, accuracy)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);""",
+                (match_id, pid, result, rank, role, hero_id, kills, assists, deaths, damage, healing, accuracy)
             )
-
-        for pid, role, rank in loser_team:
-            kills, assists, deaths, damage, healing, accuracy = generate_match_stats(role)
-            hero_id = get_random_hero(role)
-            cur.execute(
-                """INSERT INTO match_players 
-                (match_id, player_id, result, rank, role, hero_id, kills, assists, deaths, damage, healing, accuracy)
-                VALUES (%s,%s,'defeat',%s,%s,%s,%s,%s,%s,%s,%s,%s);""",
-                (match_id, pid, rank, role, hero_id, kills, assists, deaths, damage, healing, accuracy)
-            )
-
     conn.commit()
 
 
@@ -162,6 +204,7 @@ def main():
             time.sleep(1)
     except KeyboardInterrupt:
         pass
+
 
 if __name__ == "__main__":
     main()

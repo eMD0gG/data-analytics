@@ -43,17 +43,14 @@ conn = psycopg2.connect(
 )
 cur = conn.cursor()
 
-
 def sample_rank():
     idx = int(np.clip(np.random.normal(RANK_MEAN, RANK_STD), 0, len(RANKS)-1))
     return RANKS[idx]
-
 
 def generate_players():
     cur.execute("SELECT COUNT(*) FROM players;")
     if cur.fetchone()[0] > 0:
         return
-
     for _ in range(NUM_PLAYERS):
         nickname = faker.unique.user_name()
         email = faker.unique.email()
@@ -64,7 +61,6 @@ def generate_players():
             (nickname, email, phone, rank)
         )
     conn.commit()
-
 
 def get_random_players_for_roles(all_used_ids):
     players = []
@@ -80,7 +76,6 @@ def get_random_players_for_roles(all_used_ids):
             players.append((pid, role, rank))
     return players
 
-
 def get_random_hero_for_team(role, used_hero_ids):
     cur.execute(
         "SELECT id FROM heroes WHERE role = %s AND id NOT IN %s ORDER BY random() LIMIT 1;",
@@ -92,36 +87,41 @@ def get_random_hero_for_team(role, used_hero_ids):
         return row[0]
     return None
 
-
 def get_random_map():
     cur.execute("SELECT name, mode FROM maps ORDER BY random() LIMIT 1;")
     return cur.fetchone()
 
-
-def generate_match_stats(role):
+def generate_match_stats(role, hero_power=1.0, rank_mult=1.0):
     if role == "tank":
-        kills = max(0, int(np.random.normal(15, 5)))
-        assists = max(0, int(np.random.normal(10, 3)))
-        deaths = max(0, int(np.random.normal(12, 4)))
-        damage = max(0, int(np.random.normal(12000, 3000)))
-        healing = max(0, int(np.random.normal(200, 100)))
-        accuracy = float(np.clip(np.random.normal(40, 10), 0, 100))
+        base_kills = 15
+        base_assists = 10
+        base_deaths = 12
+        base_damage = 12000
+        base_healing = 200
+        base_accuracy = 40
     elif role == "damage":
-        kills = max(0, int(np.random.normal(20, 5)))
-        assists = max(0, int(np.random.normal(5, 3)))
-        deaths = max(0, int(np.random.normal(12, 4)))
-        damage = max(0, int(np.random.normal(13000, 3500)))
-        healing = max(0, int(np.random.normal(100, 50)))
-        accuracy = float(np.clip(np.random.normal(60, 15), 0, 100))
+        base_kills = 20
+        base_assists = 5
+        base_deaths = 12
+        base_damage = 13000
+        base_healing = 100
+        base_accuracy = 60
     elif role == "support":
-        kills = max(0, int(np.random.normal(8, 3)))
-        assists = max(0, int(np.random.normal(12, 4)))
-        deaths = max(0, int(np.random.normal(7, 3)))
-        damage = max(0, int(np.random.normal(5000, 1500)))
-        healing = max(0, int(np.random.normal(10000, 2000)))
-        accuracy = float(np.clip(np.random.normal(50, 10), 0, 100))
-    return kills, assists, deaths, damage, healing, accuracy
+        base_kills = 8
+        base_assists = 12
+        base_deaths = 7
+        base_damage = 5000
+        base_healing = 10000
+        base_accuracy = 50
 
+    kills = max(0, int(np.random.normal(base_kills * hero_power * rank_mult, 3)))
+    assists = max(0, int(np.random.normal(base_assists * hero_power * rank_mult, 2)))
+    deaths = max(0, int(np.random.normal(base_deaths / (hero_power * rank_mult), 3)))
+    damage = max(0, int(np.random.normal(base_damage * hero_power * rank_mult, base_damage * 0.1)))
+    healing = max(0, int(np.random.normal(base_healing * hero_power * rank_mult, base_healing * 0.1)))
+    accuracy = float(np.clip(np.random.normal(base_accuracy * hero_power * rank_mult, 10), 0, 100))
+
+    return kills, assists, deaths, damage, healing, accuracy
 
 def calculate_team_power_with_rank(team, heroes_by_role):
     power = 0
@@ -129,18 +129,14 @@ def calculate_team_power_with_rank(team, heroes_by_role):
     for pid, role, rank in team:
         hero_id = heroes_by_role[role][hero_index[role]]
         hero_index[role] += 1
-
         hero_power_value = HERO_POWER.get(hero_id, 1.0)
         rank_mult = RANK_MULTIPLIER.get(rank, 1.0)
-
         power += hero_power_value * 100 + rank_mult * 10
     return power
-
 
 def choose_winner(team1_power, team2_power):
     diff = team1_power - team2_power
     return random.random() < (1 / (1 + np.exp(-diff / 50)))
-
 
 def generate_match():
     map_name, mode = get_random_map()
@@ -152,12 +148,10 @@ def generate_match():
     )
     match_id = cur.fetchone()[0]
 
-    # уникальные игроки в матче
     used_player_ids = set()
     team1 = get_random_players_for_roles(used_player_ids)
     team2 = get_random_players_for_roles(used_player_ids)
 
-    # уникальные герои в командах
     heroes_by_role_team1 = {role: [] for role in ROLE_COMPOSITION}
     heroes_by_role_team2 = {role: [] for role in ROLE_COMPOSITION}
 
@@ -165,11 +159,9 @@ def generate_match():
         heroes_by_role_team1[role].append(get_random_hero_for_team(role, set()))
         heroes_by_role_team2[role].append(get_random_hero_for_team(role, set()))
 
-    # рассчёт силы команд
     team1_power = calculate_team_power_with_rank(team1, heroes_by_role_team1)
     team2_power = calculate_team_power_with_rank(team2, heroes_by_role_team2)
 
-    # определяем победителя
     if choose_winner(team1_power, team2_power):
         winner_team, loser_team = team1, team2
         winner_heroes, loser_heroes = heroes_by_role_team1, heroes_by_role_team2
@@ -179,14 +171,17 @@ def generate_match():
         winner_heroes, loser_heroes = heroes_by_role_team2, heroes_by_role_team1
         result_winner, result_loser = 'victory', 'defeat'
 
-    # вставка данных
     for team, heroes_by_role, result in [(winner_team, winner_heroes, result_winner),
                                          (loser_team, loser_heroes, result_loser)]:
         hero_index = {role: 0 for role in heroes_by_role}
         for pid, role, rank in team:
             hero_id = heroes_by_role[role][hero_index[role]]
             hero_index[role] += 1
-            kills, assists, deaths, damage, healing, accuracy = generate_match_stats(role)
+            hero_power_value = HERO_POWER.get(hero_id, 1.0)
+            rank_mult = RANK_MULTIPLIER.get(rank, 1.0)
+            kills, assists, deaths, damage, healing, accuracy = generate_match_stats(
+                role, hero_power=hero_power_value, rank_mult=rank_mult
+            )
             cur.execute(
                 """INSERT INTO match_players 
                 (match_id, player_id, result, rank, role, hero_id, kills, assists, deaths, damage, healing, accuracy)
@@ -194,7 +189,6 @@ def generate_match():
                 (match_id, pid, result, rank, role, hero_id, kills, assists, deaths, damage, healing, accuracy)
             )
     conn.commit()
-
 
 def main():
     generate_players()
@@ -204,7 +198,6 @@ def main():
             time.sleep(1)
     except KeyboardInterrupt:
         pass
-
 
 if __name__ == "__main__":
     main()

@@ -43,32 +43,58 @@ services:
     ports:
       - "6379:6379"
 
+  redash_postgres:
+    image: postgres:16
+    container_name: redash_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${REDASH_DB_NAME}
+      POSTGRES_USER: ${REDASH_DB_USER}
+      POSTGRES_PASSWORD: ${REDASH_DB_PASSWORD}
+    volumes:
+      - redash_pg_data:/var/lib/postgresql/data
+      - ./init-redash-db.sql:/docker-entrypoint-initdb.d/init-redash-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${REDASH_DB_USER} -d ${REDASH_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   redash:
     image: redash/redash:latest
     container_name: redash
     restart: unless-stopped
     environment:
-      REDASH_DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@postgres/${DB_NAME}"
+      REDASH_DATABASE_URL: "postgresql://${REDASH_DB_USER}:${REDASH_DB_PASSWORD}@redash_postgres/${REDASH_DB_NAME}"
       REDASH_REDIS_URL: "redis://redis:6379/0"
       REDASH_COOKIE_SECRET: "${REDASH_COOKIE_SECRET}"
+      REDASH_LOG_LEVEL: "INFO"
     ports:
       - "5000:5000"
     depends_on:
-      - postgres
-      - redis
+      redash_postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: server
   
   redash_worker:
     image: redash/redash:latest
     container_name: redash_worker
     depends_on:
-      - postgres
+      redash_postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     environment:
-      REDASH_DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}"
+      REDASH_DATABASE_URL: "postgresql://${REDASH_DB_USER:-redash_user}:${REDASH_DB_PASSWORD:-redash_password}@redash_postgres:5432/${REDASH_DB_NAME:-redash_db}"
       REDASH_REDIS_URL: "redis://redis:6379/0"
       REDASH_COOKIE_SECRET: "${REDASH_COOKIE_SECRET}"
       QUEUES: "queries,celery"
+      REDASH_LOG_LEVEL: "INFO"
     restart: unless-stopped
     command: worker
 
 volumes:
   pg_data:
+  redash_pg_data:

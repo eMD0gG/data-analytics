@@ -4,3 +4,8 @@ matplotlib==3.10.8
 seaborn==0.13.2
 psycopg2-binary==2.9.11
 python-dotenv==1.2.1
+
+REDASH_DB_NAME=redash_db
+REDASH_DB_USER=redash_user
+REDASH_DB_PASSWORD=redash_password
+REDASH_COOKIE_SECRET=your_cookie_secret_here

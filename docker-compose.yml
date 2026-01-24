@@ -87,7 +87,7 @@ services:
       redis:
         condition: service_started
     environment:
-      REDASH_DATABASE_URL: "postgresql://${REDASH_DB_USER:-redash_user}:${REDASH_DB_PASSWORD:-redash_password}@redash_postgres:5432/${REDASH_DB_NAME:-redash_db}"
+      REDASH_DATABASE_URL: "postgresql://${REDASH_DB_USER}:${REDASH_DB_PASSWORD}@redash_postgres:5432/${REDASH_DB_NAME}"
       REDASH_REDIS_URL: "redis://redis:6379/0"
       REDASH_COOKIE_SECRET: "${REDASH_COOKIE_SECRET}"
       QUEUES: "queries,celery"
